@@ -1,0 +1,345 @@
+<title>Couples Bowling League</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a league score sheet. Header band, tab strip, then ruled sheets per section. */
+  :root {
+    --bg: #eef2ee;        /* score-sheet green-grey */
+    --sheet: #ffffff;
+    --ink: #1b2433;
+    --muted: #5b6676;
+    --line: #d2dbd3;
+    --accent: #1f5fa8;    /* house-ball blue */
+    --accent-ink: #ffffff;
+    --pin: #c3202e;       /* the red neck stripe on a pin */
+    --warn-bg: #fff4d6;
+    --warn-ink: #6b4b00;
+    --font-display: "Bowlby One", "Arial Black", Impact, sans-serif;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-data: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171f; --sheet: #1a212c; --ink: #e6ebf2; --muted: #9aa6b6; --line: #2c3644;
+      --accent: #6aa4ec; --accent-ink: #0d1520; --pin: #ff6b6b; --warn-bg: #3a2f12; --warn-ink: #f3d68a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12171f; --sheet: #1a212c; --ink: #e6ebf2; --muted: #9aa6b6; --line: #2c3644;
+    --accent: #6aa4ec; --accent-ink: #0d1520; --pin: #ff6b6b; --warn-bg: #3a2f12; --warn-ink: #f3d68a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); }
+  .wrap { max-width: 980px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; display: grid; gap: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; border-bottom: 3px solid var(--pin); padding-bottom: 12px; }
+  h1 { font: 400 clamp(26px, 5vw, 38px)/1.05 var(--font-display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { font: 500 14px var(--font-body); border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+  nav button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .notice { background: var(--warn-bg); color: var(--warn-ink); padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+  section { display: grid; gap: 14px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+  h2 { font-size: 18px; margin: 0; }
+  .btn { font: 500 14px var(--font-body); padding: 8px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--accent); }
+  .btn.danger { background: transparent; color: var(--pin); border-color: transparent; padding-inline: 8px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
+  td.num, th.num { text-align: right; }
+  input, select { font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-bottom-color: var(--line); padding: 4px 6px; width: 100%; min-width: 0; border-radius: 4px; }
+  input:hover { border-color: var(--line); }
+  input.avg { width: 64px; font-family: var(--font-data); text-align: right; }
+  input[readonly] { border-color: transparent; }
+  .teamno { font: 400 18px var(--font-display); color: var(--pin); width: 40px; }
+  .chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .week { background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; }
+  .week h3 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+  .week ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 14px; }
+  .week li { display: grid; grid-template-columns: 76px 1fr; gap: 8px; }
+  .lanes { white-space: nowrap; font-family: var(--font-data); color: var(--muted); font-size: 12px; padding-top: 2px; }
+  .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 20px; background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .form input { border: 1px solid var(--line); color: var(--ink); font-size: 15px; }
+  .callout { font-size: 14px; color: var(--muted); max-width: 65ch; }
+  .callout strong { color: var(--ink); }
+  .confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--warn-bg); color: var(--warn-ink); padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  @media (prefers-reduced-motion: no-preference) { nav button { transition: background .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="leagueTitle">Couples League</h1>
+      <div class="sub" id="leagueSub">League setup</div>
+    </div>
+    <nav role="tablist" id="tabs">
+      <button role="tab" data-tab="teams" aria-selected="true">Teams</button>
+      <button role="tab" data-tab="subs" aria-selected="false">Subs</button>
+      <button role="tab" data-tab="schedule" aria-selected="false">Schedule</button>
+      <button role="tab" data-tab="rules" aria-selected="false">Rules</button>
+    </nav>
+  </header>
+  <div id="notice" class="notice" hidden></div>
+  <main id="view"></main>
+</div>
+
+<script src="engine.js"></script>
+<script>
+const L = window.League;
+const state = {
+  tab: "teams",
+  settings: L.withDefaults({}),
+  teams: [],
+  subs: [],
+  schedule: null,
+  canWrite: false,
+  live: false,
+  confirm: null,
+};
+let db = null;
+
+try { const t = localStorage.getItem("bl-tab"); if (t) state.tab = t; } catch (e) {}
+
+const $ = (sel, el = document) => el.querySelector(sel);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ro = () => (state.canWrite ? "" : "readonly");
+const byNum = (a, b) => (a.num || 0) - (b.num || 0);
+const teamName = (id) => { const t = state.teams.find((x) => x.id === id); return t ? `${t.num}. ${t.name}` : "Bye"; };
+
+function notice(msg) { const n = $("#notice"); n.textContent = msg || ""; n.hidden = !msg; }
+
+// ---------- persistence ----------
+async function save(path, data) {
+  if (!state.live) return;
+  try { await db.doc(path).set(data); }
+  catch (e) {
+    if (e && e.code === "invalid_argument") { state.canWrite = false; render(); notice("This page is read-only for you. Only the league manager can change it."); }
+    else notice("Couldn't save that change. Check your connection and try again.");
+  }
+}
+async function remove(path) { if (state.live) { try { await db.doc(path).delete(); } catch (e) { notice("Couldn't delete that. Try again."); } } }
+function localUpsert(list, item) { const i = list.findIndex((x) => x.id === item.id); if (i >= 0) list[i] = item; else list.push(item); }
+
+function saveTeam(team) { localUpsert(state.teams, team); const { id, ...data } = team; save("teams/" + id, data); }
+function saveSub(sub) { localUpsert(state.subs, sub); const { id, ...data } = sub; save("subs/" + id, data); }
+function saveSettings() { save("league/settings", state.settings); }
+function saveSchedule() { save("league/schedule", state.schedule); }
+
+// ---------- views ----------
+function render() {
+  document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
+  $("#leagueTitle").textContent = state.settings.leagueName || "Couples League";
+  $("#leagueSub").textContent = `${state.teams.length} teams · ${state.settings.weeks} weeks · ${L.pointsPerWeek(state.settings)} points a week`;
+  const v = $("#view");
+  const active = document.activeElement && document.activeElement.id;
+  v.innerHTML = { teams: viewTeams, subs: viewSubs, schedule: viewSchedule, rules: viewRules }[state.tab]();
+  if (active) { const el = document.getElementById(active); if (el) el.focus(); }
+}
+
+function confirmBar(key, text, action) {
+  if (state.confirm !== key) return "";
+  return `<div class="confirm"><span>${esc(text)}</span><button class="btn" data-act="${action}">Yes, ${action === "regen" ? "replace it" : "delete"}</button><button class="btn ghost" data-act="cancel">Cancel</button></div>`;
+}
+
+function viewTeams() {
+  const teams = state.teams.slice().sort(byNum);
+  const rows = teams.map((t) => {
+    const b = t.bowlers || [];
+    const cell = (i) => `
+      <td><input id="t-${t.id}-b${i}" data-team="${t.id}" data-field="b${i}name" value="${esc(b[i] && b[i].name)}" placeholder="Bowler ${i + 1}" ${ro()} aria-label="Team ${t.num} bowler ${i + 1}"></td>
+      <td class="num"><input class="avg" id="t-${t.id}-a${i}" data-team="${t.id}" data-field="b${i}avg" inputmode="numeric" value="${esc(b[i] && b[i].avg)}" ${ro()} aria-label="Team ${t.num} bowler ${i + 1} starting average"></td>
+      <td class="num">${b[i] && b[i].avg ? L.handicapFor(b[i].avg, state.settings) : "–"}</td>`;
+    return `<tr>
+      <td class="teamno">${t.num}</td>
+      <td><input id="t-${t.id}-name" data-team="${t.id}" data-field="name" value="${esc(t.name)}" ${ro()} aria-label="Team ${t.num} name"></td>
+      ${cell(0)}${cell(1)}
+      <td>${state.canWrite ? `<button class="btn danger" data-act="ask-del-team" data-id="${t.id}" aria-label="Delete team ${t.num}">Delete</button>` : ""}</td>
+    </tr>${state.confirm === "team:" + t.id ? `<tr><td colspan="10">${confirmBar("team:" + t.id, `Delete ${t.name} and both bowlers?`, "del-team")}</td></tr>` : ""}`;
+  }).join("");
+  return `<section>
+    <div class="bar"><h2>Teams</h2>${state.canWrite ? `<button class="btn" data-act="add-team">Add team</button>` : ""}</div>
+    <p class="callout">Bowler 1 bowls against the other team's bowler 1, and bowler 2 against bowler 2. Enter each bowler's <strong>starting average</strong>; from week 2 on, their league average takes over. Handicap is ${state.settings.handicapPct}% of ${state.settings.handicapBase} minus average.</p>
+    <div class="sheet">${teams.length ? `<table>
+      <thead><tr><th>#</th><th>Team</th><th>Bowler 1</th><th class="num">Avg</th><th class="num">Hdcp</th><th>Bowler 2</th><th class="num">Avg</th><th class="num">Hdcp</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table>` : `<div class="empty">No teams yet. ${state.canWrite ? "Add your first team to get started." : ""}</div>`}</div>
+  </section>`;
+}
+
+function viewSubs() {
+  const subs = state.subs.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const rows = subs.map((s) => `<tr>
+    <td><input id="s-${s.id}-name" data-sub="${s.id}" data-field="name" value="${esc(s.name)}" placeholder="Name" ${ro()} aria-label="Sub name"></td>
+    <td class="num"><input class="avg" id="s-${s.id}-avg" data-sub="${s.id}" data-field="avg" inputmode="numeric" value="${esc(s.avg)}" ${ro()} aria-label="Sub average"></td>
+    <td class="num">${s.avg ? L.handicapFor(s.avg, state.settings) : "–"}</td>
+    <td>${state.canWrite ? `<button class="btn danger" data-act="ask-del-sub" data-id="${s.id}">Delete</button>` : ""}</td>
+  </tr>${state.confirm === "sub:" + s.id ? `<tr><td colspan="4">${confirmBar("sub:" + s.id, `Remove ${s.name || "this sub"} from the sub list?`, "del-sub")}</td></tr>` : ""}`).join("");
+  return `<section>
+    <div class="bar"><h2>Sub list</h2>${state.canWrite ? `<button class="btn" data-act="add-sub">Add sub</button>` : ""}</div>
+    <p class="callout">Subs bowl with their own average and handicap. Each week you'll pick who they're filling in for when you enter scores.</p>
+    <div class="sheet">${subs.length ? `<table><thead><tr><th>Name</th><th class="num">Avg</th><th class="num">Hdcp</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No subs yet.</div>`}</div>
+  </section>`;
+}
+
+function weekDate(start, i) {
+  if (!start) return "";
+  const d = new Date(start + "T12:00:00");
+  d.setDate(d.getDate() + 7 * i);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function viewSchedule() {
+  const sch = state.schedule;
+  const start = (sch && sch.startDate) || "";
+  const weeks = sch ? sch.weeks || [] : [];
+  const controls = state.canWrite ? `<div class="bar" style="justify-content:flex-start">
+      <label class="sub" for="startDate">First week</label>
+      <input type="date" id="startDate" value="${esc(start)}" style="width:auto">
+      <button class="btn" data-act="${weeks.length ? "ask-regen" : "regen"}" ${state.teams.length < 2 ? "disabled" : ""}>${weeks.length ? "Rebuild schedule" : "Build schedule"}</button>
+    </div>${confirmBar("regen", "Rebuild the schedule from the current teams? This replaces every week's matchups.", "regen")}` : "";
+  const cards = weeks.map((w, i) => `<div class="week">
+      <h3><span>Week ${w.week}</span><span class="chip">${esc(weekDate(start, i) || "Date not set")}</span></h3>
+      <ol>${(w.pairs || []).map((p, j) => `<li><span class="lanes">${p.home && p.away ? `Lanes ${2 * j + 1}–${2 * j + 2}` : "Bye"}</span><span>${esc(teamName(p.home))} <span class="sub">vs</span> ${esc(teamName(p.away))}</span></li>`).join("")}</ol>
+    </div>`).join("");
+  return `<section>
+    <div class="bar"><h2>Schedule</h2></div>
+    <p class="callout">A round robin, so no two teams meet twice in ${state.settings.weeks} weeks${state.teams.length % 2 ? ". With an odd number of teams, one team has a bye each week" : ""}. If teams change, rebuild it.</p>
+    ${controls}
+    ${weeks.length ? `<div class="weeks">${cards}</div>` : `<div class="sheet"><div class="empty">No schedule yet. ${state.canWrite ? "Add your teams, then build the schedule." : ""}</div></div>`}
+  </section>`;
+}
+
+function viewRules() {
+  const s = state.settings;
+  const field = (key, label, type = "number") => `<label for="r-${key}">${label}<input id="r-${key}" data-setting="${key}" type="${type}" value="${esc(s[key])}" ${ro()} ${type === "number" ? 'inputmode="numeric"' : ""}></label>`;
+  return `<section>
+    <div class="bar"><h2>League rules</h2></div>
+    <p class="callout">Each game, every bowler matchup is worth <strong>${s.headToHeadPoints}</strong> and the higher handicapped team total is worth <strong>${s.teamGamePoints}</strong>. With two bowlers a side and ${s.gamesPerWeek} games, that's <strong>${L.pointsPerWeek(s)} points</strong> a week. Ties split the points. A bowler who is absent with no sub bowls a blind score of their average minus ${s.blindPenalty}, plus handicap.</p>
+    <div class="form">
+      ${field("leagueName", "League name", "text")}
+      ${field("weeks", "Weeks in the season")}
+      ${field("gamesPerWeek", "Games per week")}
+      ${field("handicapBase", "Handicap base")}
+      ${field("handicapPct", "Handicap percentage")}
+      ${field("headToHeadPoints", "Points per bowler matchup, per game")}
+      ${field("teamGamePoints", "Points for team total, per game")}
+      ${field("blindPenalty", "Blind score: average minus")}
+    </div>
+    <p class="callout">Handicap at 100% of ${s.handicapBase} is a starting assumption. Check it with the league and change it here.</p>
+  </section>`;
+}
+
+// ---------- events ----------
+document.getElementById("tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  state.tab = b.dataset.tab; state.confirm = null;
+  try { localStorage.setItem("bl-tab", state.tab); } catch (err) {}
+  render();
+});
+
+document.getElementById("view").addEventListener("change", (e) => {
+  const el = e.target;
+  if (!state.canWrite) return;
+  if (el.dataset.team) {
+    const t = structuredClone(state.teams.find((x) => x.id === el.dataset.team));
+    const f = el.dataset.field;
+    t.bowlers = t.bowlers || [{}, {}];
+    if (f === "name") t.name = el.value.trim();
+    else {
+      const i = Number(f[1]);
+      t.bowlers[i] = t.bowlers[i] || {};
+      if (!t.bowlers[i].id) t.bowlers[i].id = uid();
+      if (f.endsWith("name")) t.bowlers[i].name = el.value.trim();
+      else t.bowlers[i].avg = el.value === "" ? null : Math.max(0, Math.min(300, parseInt(el.value, 10) || 0));
+    }
+    saveTeam(t); render();
+  } else if (el.dataset.sub) {
+    const s = structuredClone(state.subs.find((x) => x.id === el.dataset.sub));
+    if (el.dataset.field === "name") s.name = el.value.trim();
+    else s.avg = el.value === "" ? null : Math.max(0, Math.min(300, parseInt(el.value, 10) || 0));
+    saveSub(s); render();
+  } else if (el.dataset.setting) {
+    const k = el.dataset.setting;
+    state.settings[k] = el.type === "number" ? Math.max(0, Number(el.value) || 0) : el.value.trim();
+    saveSettings(); render();
+  } else if (el.id === "startDate") {
+    if (state.schedule) { state.schedule.startDate = el.value; saveSchedule(); }
+    else state.pendingStart = el.value;
+    render();
+  }
+});
+
+document.getElementById("view").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]");
+  if (!b || !state.canWrite) return;
+  const act = b.dataset.act;
+  if (act === "add-team") {
+    const num = state.teams.reduce((m, t) => Math.max(m, t.num || 0), 0) + 1;
+    saveTeam({ id: uid(), num, name: "Team " + num, bowlers: [{ id: uid(), name: "", avg: null }, { id: uid(), name: "", avg: null }] });
+    render();
+    const el = document.getElementById(`t-${state.teams[state.teams.length - 1].id}-name`); if (el) el.select();
+  } else if (act === "add-sub") {
+    const s = { id: uid(), name: "", avg: null };
+    saveSub(s); render(); const el = document.getElementById(`s-${s.id}-name`); if (el) el.focus();
+  } else if (act === "ask-del-team") { state.confirm = "team:" + b.dataset.id; render(); }
+  else if (act === "ask-del-sub") { state.confirm = "sub:" + b.dataset.id; render(); }
+  else if (act === "ask-regen") { state.confirm = "regen"; render(); }
+  else if (act === "cancel") { state.confirm = null; render(); }
+  else if (act === "del-team") {
+    const id = state.confirm.split(":")[1];
+    state.teams = state.teams.filter((t) => t.id !== id); remove("teams/" + id); state.confirm = null; render();
+  } else if (act === "del-sub") {
+    const id = state.confirm.split(":")[1];
+    state.subs = state.subs.filter((s) => s.id !== id); remove("subs/" + id); state.confirm = null; render();
+  } else if (act === "regen") {
+    const ids = state.teams.slice().sort(byNum).map((t) => t.id);
+    const rounds = L.roundRobin(ids, state.settings.weeks);
+    const start = ($("#startDate") && $("#startDate").value) || (state.schedule && state.schedule.startDate) || "";
+    state.schedule = { startDate: start, weeks: rounds.map((pairs, i) => ({ week: i + 1, pairs: pairs.map(([a, b]) => ({ home: a || b, away: a && b ? b : null })) })) };
+    state.confirm = null; saveSchedule(); render();
+  }
+});
+
+// ---------- boot ----------
+function loadSample() {
+  const names = [["The Gutter Ballers", "Dana Reyes", 142, "Sam Reyes", 171], ["Split Happens", "Priya Shah", 128, "Neil Shah", 186], ["Pin Pals", "Kim Ortiz", 155, "Lou Ortiz", 163], ["Spare Me", "Ava Brooks", 119, "Theo Brooks", 192]];
+  state.teams = names.map((n, i) => ({ id: "s" + i, num: i + 1, name: n[0], bowlers: [{ id: "s" + i + "a", name: n[1], avg: n[2] }, { id: "s" + i + "b", name: n[3], avg: n[4] }] }));
+  state.subs = [{ id: "sub1", name: "Jordan Lee", avg: 158 }];
+  const rounds = L.roundRobin(state.teams.map((t) => t.id), 3);
+  state.schedule = { startDate: "", weeks: rounds.map((p, i) => ({ week: i + 1, pairs: p.map(([a, b]) => ({ home: a, away: b })) })) };
+}
+
+async function boot() {
+  render();
+  const claude = window.claude;
+  db = claude && claude.use ? await claude.use("db") : null;
+  if (!db) {
+    loadSample(); state.canWrite = true; render();
+    notice("Showing sample teams. Changes here aren't saved; open the league page in Claude to keep your data.");
+    return;
+  }
+  state.live = true;
+  const user = await claude.use("user");
+  const can = user && user.can ? await user.can("data.write") : null;
+  state.canWrite = can !== false;
+  db.doc("league/settings").onSnapshot((s) => { if (s.exists) { state.settings = L.withDefaults(s.data()); render(); } });
+  db.doc("league/schedule").onSnapshot((s) => { state.schedule = s.exists ? s.data() : null; render(); });
+  db.collection("teams").onSnapshot((q) => { state.teams = q.docs.map((d) => ({ id: d.id, ...d.data() })); render(); },
+    () => notice("Couldn't load the teams. Reload the page to try again."));
+  db.collection("subs").onSnapshot((q) => { state.subs = q.docs.map((d) => ({ id: d.id, ...d.data() })); render(); });
+}
+boot();
+</script>

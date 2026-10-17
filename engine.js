@@ -53,7 +53,7 @@
   }
 
   // Score one matchup for one week.
-  // Each side: [{ average, games: [g1,g2,g3] }] in slot order (slot 1 vs slot 1).
+  // Each side: [{ average, handicap?, games: [g1,g2,g3] }] in slot order (slot 1 vs slot 1).
   // Games must already be the scores that count (a blind score is passed in as a game).
   function scoreMatch(sideA, sideB, settings) {
     const s = withDefaults(settings);
@@ -63,7 +63,8 @@
       if (y > x) return [0, pts];
       return [pts / 2, pts / 2];
     };
-    const hcp = (side) => side.map((p) => handicapFor(p.average, s));
+    // A handicap entered from the alley wins; otherwise calculate it from the average.
+    const hcp = (side) => side.map((p) => (Number.isFinite(p.handicap) ? p.handicap : handicapFor(p.average, s)));
     const hA = hcp(sideA);
     const hB = hcp(sideB);
     for (let g = 0; g < s.gamesPerWeek; g++) {

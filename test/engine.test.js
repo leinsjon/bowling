@@ -50,3 +50,10 @@ test("odd team counts get a bye", () => {
   const rounds = L.roundRobin(["a", "b", "c"], 3);
   for (const pairs of rounds) assert.ok(pairs.some((p) => p.includes(null)));
 });
+
+test("an entered handicap overrides the calculated one", () => {
+  const A = [{ average: 200, handicap: 0, games: [200, 200, 200] }, { average: 150, handicap: 0, games: [150, 150, 150] }];
+  const B = [{ average: 200, handicap: 5, games: [200, 200, 200] }, { average: 150, handicap: 5, games: [150, 150, 150] }];
+  const r = L.scoreMatch(A, B);
+  assert.deepStrictEqual([r.a, r.b], [0, 15]);
+});

@@ -58,6 +58,7 @@
   td.num, th.num { text-align: right; }
   input, select { font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-bottom-color: var(--line); padding: 4px 6px; width: 100%; min-width: 0; border-radius: 4px; }
   input:hover { border-color: var(--line); }
+  input::placeholder { color: var(--muted); opacity: .5; }
   input.avg { width: 64px; font-family: var(--font-data); text-align: right; }
   input[readonly] { border-color: transparent; }
   .teamno { font: 400 18px var(--font-display); color: var(--pin); width: 40px; }
@@ -87,6 +88,7 @@
     <nav role="tablist" id="tabs">
       <button role="tab" data-tab="teams" aria-selected="true">Teams</button>
       <button role="tab" data-tab="subs" aria-selected="false">Subs</button>
+      <button role="tab" data-tab="handicaps" aria-selected="false">Handicaps</button>
       <button role="tab" data-tab="schedule" aria-selected="false">Schedule</button>
       <button role="tab" data-tab="rules" aria-selected="false">Rules</button>
     </nav>
@@ -104,6 +106,8 @@ const state = {
   teams: [],
   subs: [],
   schedule: null,
+  handicaps: {}, // week number -> { bowlerId: handicap } as entered from the alley
+  hcpWeek: null,
   canWrite: false,
   live: false,
   confirm: null,
@@ -137,6 +141,7 @@ function saveTeam(team) { localUpsert(state.teams, team); const { id, ...data } 
 function saveSub(sub) { localUpsert(state.subs, sub); const { id, ...data } = sub; save("subs/" + id, data); }
 function saveSettings() { save("league/settings", state.settings); }
 function saveSchedule() { save("league/schedule", state.schedule); }
+function saveHandicaps(week) { save("handicaps/w" + week, { week, values: state.handicaps[week] || {} }); }
 
 // ---------- views ----------
 function render() {
@@ -144,8 +149,8 @@ function render() {
   $("#leagueTitle").textContent = state.settings.leagueName || "Couples League";
   $("#leagueSub").textContent = `${state.teams.length} teams · ${state.settings.weeks} weeks · ${L.pointsPerWeek(state.settings)} points a week`;
   const v = $("#view");
-  const active = document.activeElement && document.activeElement.id;
-  v.innerHTML = { teams: viewTeams, subs: viewSubs, schedule: viewSchedule, rules: viewRules }[state.tab]();
+  const active = state.focusId || (document.activeElement && document.activeElement.id);
+  v.innerHTML = { teams: viewTeams, subs: viewSubs, handicaps: viewHandicaps, schedule: viewSchedule, rules: viewRules }[state.tab]();
   if (active) { const el = document.getElementById(active); if (el) el.focus(); }
 }
 
@@ -160,8 +165,7 @@ function viewTeams() {
     const b = t.bowlers || [];
     const cell = (i) => `
       <td><input id="t-${t.id}-b${i}" data-team="${t.id}" data-field="b${i}name" value="${esc(b[i] && b[i].name)}" placeholder="Bowler ${i + 1}" ${ro()} aria-label="Team ${t.num} bowler ${i + 1}"></td>
-      <td class="num"><input class="avg" id="t-${t.id}-a${i}" data-team="${t.id}" data-field="b${i}avg" inputmode="numeric" value="${esc(b[i] && b[i].avg)}" ${ro()} aria-label="Team ${t.num} bowler ${i + 1} starting average"></td>
-      <td class="num">${b[i] && b[i].avg ? L.handicapFor(b[i].avg, state.settings) : "–"}</td>`;
+      <td class="num"><input class="avg" id="t-${t.id}-a${i}" data-team="${t.id}" data-field="b${i}avg" inputmode="numeric" value="${esc(b[i] && b[i].avg)}" ${ro()} aria-label="Team ${t.num} bowler ${i + 1} starting average"></td>`;
     return `<tr>
       <td class="teamno">${t.num}</td>
       <td><input id="t-${t.id}-name" data-team="${t.id}" data-field="name" value="${esc(t.name)}" ${ro()} aria-label="Team ${t.num} name"></td>
@@ -171,9 +175,9 @@ function viewTeams() {
   }).join("");
   return `<section>
     <div class="bar"><h2>Teams</h2>${state.canWrite ? `<button class="btn" data-act="add-team">Add team</button>` : ""}</div>
-    <p class="callout">Bowler 1 bowls against the other team's bowler 1, and bowler 2 against bowler 2. Enter each bowler's <strong>starting average</strong>; from week 2 on, their league average takes over. Handicap is ${state.settings.handicapPct}% of ${state.settings.handicapBase} minus average.</p>
+    <p class="callout">Bowler 1 bowls against the other team's bowler 1, and bowler 2 against bowler 2. Enter each bowler's <strong>starting average</strong>; from week 2 on, their league average takes over. Enter each week's handicaps from the alley on the Handicaps tab.</p>
     <div class="sheet">${teams.length ? `<table>
-      <thead><tr><th>#</th><th>Team</th><th>Bowler 1</th><th class="num">Avg</th><th class="num">Hdcp</th><th>Bowler 2</th><th class="num">Avg</th><th class="num">Hdcp</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Team</th><th>Bowler 1</th><th class="num">Avg</th><th>Bowler 2</th><th class="num">Avg</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table>` : `<div class="empty">No teams yet. ${state.canWrite ? "Add your first team to get started." : ""}</div>`}</div>
   </section>`;
 }
@@ -183,13 +187,52 @@ function viewSubs() {
   const rows = subs.map((s) => `<tr>
     <td><input id="s-${s.id}-name" data-sub="${s.id}" data-field="name" value="${esc(s.name)}" placeholder="Name" ${ro()} aria-label="Sub name"></td>
     <td class="num"><input class="avg" id="s-${s.id}-avg" data-sub="${s.id}" data-field="avg" inputmode="numeric" value="${esc(s.avg)}" ${ro()} aria-label="Sub average"></td>
-    <td class="num">${s.avg ? L.handicapFor(s.avg, state.settings) : "–"}</td>
     <td>${state.canWrite ? `<button class="btn danger" data-act="ask-del-sub" data-id="${s.id}">Delete</button>` : ""}</td>
   </tr>${state.confirm === "sub:" + s.id ? `<tr><td colspan="4">${confirmBar("sub:" + s.id, `Remove ${s.name || "this sub"} from the sub list?`, "del-sub")}</td></tr>` : ""}`).join("");
   return `<section>
     <div class="bar"><h2>Sub list</h2>${state.canWrite ? `<button class="btn" data-act="add-sub">Add sub</button>` : ""}</div>
-    <p class="callout">Subs bowl with their own average and handicap. Each week you'll pick who they're filling in for when you enter scores.</p>
-    <div class="sheet">${subs.length ? `<table><thead><tr><th>Name</th><th class="num">Avg</th><th class="num">Hdcp</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No subs yet.</div>`}</div>
+    <p class="callout">Subs bowl with their own average and handicap. Enter a sub's handicap on the Handicaps tab for the weeks they bowl. Each week you'll pick who they're filling in for when you enter scores.</p>
+    <div class="sheet">${subs.length ? `<table><thead><tr><th>Name</th><th class="num">Avg</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No subs yet.</div>`}</div>
+  </section>`;
+}
+
+// The handicap to suggest when nothing is entered yet: the latest earlier week's entry, else calculated.
+function suggestedHandicap(id, avg, week) {
+  for (let w = week - 1; w >= 1; w--) {
+    const v = state.handicaps[w] && state.handicaps[w][id];
+    if (Number.isFinite(v)) return { value: v, from: "week " + w };
+  }
+  return avg ? { value: L.handicapFor(avg, state.settings), from: "calculated" } : null;
+}
+
+function viewHandicaps() {
+  const weeks = Math.max(1, state.settings.weeks || 1);
+  const week = Math.min(state.hcpWeek || 1, weeks);
+  const entered = state.handicaps[week] || {};
+  const start = state.schedule && state.schedule.startDate;
+  const options = Array.from({ length: weeks }, (_, i) => `<option value="${i + 1}" ${i + 1 === week ? "selected" : ""}>Week ${i + 1}${start ? " · " + esc(weekDate(start, i)) : ""}</option>`).join("");
+  const row = (id, label, who, avg) => {
+    const sug = suggestedHandicap(id, avg, week);
+    const v = entered[id];
+    return `<tr><td>${label}</td><td>${esc(who || "Unnamed")}</td>
+      <td class="num sub">${sug ? `${sug.value} <span class="chip">${esc(sug.from)}</span>` : "–"}</td>
+      <td class="num"><input class="avg" id="h-${id}" data-hcp="${id}" inputmode="numeric" value="${Number.isFinite(v) ? v : ""}" placeholder="${sug ? sug.value : ""}" ${ro()} aria-label="Week ${week} handicap for ${esc(who)}"></td></tr>`;
+  };
+  const teams = state.teams.slice().sort(byNum);
+  const ids = [];
+  const teamRows = teams.map((t) => (t.bowlers || []).map((b, i) => { ids.push(b.id); return row(b.id, i === 0 ? `<span class="teamno">${t.num}</span> ${esc(t.name)}` : "", b.name, b.avg); }).join("")).join("");
+  const subs = state.subs.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const subRows = subs.map((s) => row(s.id, "Sub", s.name, s.avg)).join("");
+  const done = ids.filter((id) => Number.isFinite(entered[id])).length;
+  return `<section>
+    <div class="bar"><h2>Handicaps</h2>
+      <div class="bar"><label class="sub" for="hcpWeek">Week</label><select id="hcpWeek" style="width:auto">${options}</select></div>
+    </div>
+    <p class="callout">Type each bowler's handicap from the alley sheet. <strong>${done} of ${ids.length}</strong> team bowlers entered for week ${week}. A blank box uses the gray suggestion, which is last week's entry or, failing that, ${state.settings.handicapPct}% of ${state.settings.handicapBase} minus average.</p>
+    ${state.canWrite ? `<div class="bar" style="justify-content:flex-start"><button class="btn ghost" data-act="fill-hcp">Fill blanks with suggestions</button></div>` : ""}
+    <div class="sheet">${ids.length || subs.length ? `<table>
+      <thead><tr><th>Team</th><th>Bowler</th><th class="num">Suggested</th><th class="num">Week ${week}</th></tr></thead>
+      <tbody>${teamRows}${subRows ? `<tr><th colspan="4">Subs</th></tr>${subRows}` : ""}</tbody></table>` : `<div class="empty">Add teams first.</div>`}</div>
   </section>`;
 }
 
@@ -226,7 +269,7 @@ function viewRules() {
   const field = (key, label, type = "number") => `<label for="r-${key}">${label}<input id="r-${key}" data-setting="${key}" type="${type}" value="${esc(s[key])}" ${ro()} ${type === "number" ? 'inputmode="numeric"' : ""}></label>`;
   return `<section>
     <div class="bar"><h2>League rules</h2></div>
-    <p class="callout">Each game, every bowler matchup is worth <strong>${s.headToHeadPoints}</strong> and the higher handicapped team total is worth <strong>${s.teamGamePoints}</strong>. With two bowlers a side and ${s.gamesPerWeek} games, that's <strong>${L.pointsPerWeek(s)} points</strong> a week. Ties split the points. A bowler who is absent with no sub bowls a blind score of their average minus ${s.blindPenalty}, plus handicap.</p>
+    <p class="callout">Each game, every bowler matchup is worth <strong>${s.headToHeadPoints}</strong> and the higher handicapped team total is worth <strong>${s.teamGamePoints}</strong>. With two bowlers a side and ${s.gamesPerWeek} games, that's <strong>${L.pointsPerWeek(s)} points</strong> a week. Ties split the points. Handicaps come from the alley each week on the Handicaps tab; the base and percentage below only fill in when one isn't entered. A bowler who is absent with no sub bowls a blind score of their average minus ${s.blindPenalty}, plus handicap.</p>
     <div class="form">
       ${field("leagueName", "League name", "text")}
       ${field("weeks", "Weeks in the season")}
@@ -237,7 +280,7 @@ function viewRules() {
       ${field("teamGamePoints", "Points for team total, per game")}
       ${field("blindPenalty", "Blind score: average minus")}
     </div>
-    <p class="callout">Handicap at 100% of ${s.handicapBase} is a starting assumption. Check it with the league and change it here.</p>
+    <p class="callout">The calculated handicap (100% of ${s.handicapBase}) is only a fallback. Check it with the league and change it here.</p>
   </section>`;
 }
 
@@ -275,11 +318,29 @@ document.getElementById("view").addEventListener("change", (e) => {
     const k = el.dataset.setting;
     state.settings[k] = el.type === "number" ? Math.max(0, Number(el.value) || 0) : el.value.trim();
     saveSettings(); render();
+  } else if (el.dataset.hcp) {
+    const week = Math.min(state.hcpWeek || 1, state.settings.weeks || 1);
+    const vals = Object.assign({}, state.handicaps[week]);
+    if (el.value.trim() === "") delete vals[el.dataset.hcp];
+    else vals[el.dataset.hcp] = Math.max(0, Math.min(300, parseInt(el.value, 10) || 0));
+    state.handicaps[week] = vals; saveHandicaps(week); render();
+  } else if (el.id === "hcpWeek") {
+    state.hcpWeek = Number(el.value); render();
   } else if (el.id === "startDate") {
     if (state.schedule) { state.schedule.startDate = el.value; saveSchedule(); }
     else state.pendingStart = el.value;
     render();
   }
+});
+
+// Enter moves down the handicap column, like working down the alley sheet.
+document.getElementById("view").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.dataset.hcp) return;
+  e.preventDefault();
+  const inputs = [...document.querySelectorAll("input[data-hcp]")];
+  const next = inputs[inputs.indexOf(e.target) + 1];
+  // Focusing the next box blurs this one, which saves it and redraws the table; focusId carries focus across.
+  if (next) { state.focusId = next.id; next.focus(); state.focusId = null; } else e.target.blur();
 });
 
 document.getElementById("view").addEventListener("click", (e) => {
@@ -298,6 +359,17 @@ document.getElementById("view").addEventListener("click", (e) => {
   else if (act === "ask-del-sub") { state.confirm = "sub:" + b.dataset.id; render(); }
   else if (act === "ask-regen") { state.confirm = "regen"; render(); }
   else if (act === "cancel") { state.confirm = null; render(); }
+  else if (act === "fill-hcp") {
+    const week = Math.min(state.hcpWeek || 1, state.settings.weeks || 1);
+    const vals = Object.assign({}, state.handicaps[week]);
+    const people = state.teams.flatMap((t) => t.bowlers || []).concat(state.subs);
+    for (const p of people) {
+      if (Number.isFinite(vals[p.id])) continue;
+      const sug = suggestedHandicap(p.id, p.avg, week);
+      if (sug) vals[p.id] = sug.value;
+    }
+    state.handicaps[week] = vals; saveHandicaps(week); render();
+  }
   else if (act === "del-team") {
     const id = state.confirm.split(":")[1];
     state.teams = state.teams.filter((t) => t.id !== id); remove("teams/" + id); state.confirm = null; render();
@@ -339,6 +411,11 @@ async function boot() {
   db.doc("league/schedule").onSnapshot((s) => { state.schedule = s.exists ? s.data() : null; render(); });
   db.collection("teams").onSnapshot((q) => { state.teams = q.docs.map((d) => ({ id: d.id, ...d.data() })); render(); },
     () => notice("Couldn't load the teams. Reload the page to try again."));
+  db.collection("handicaps").onSnapshot((q) => {
+    state.handicaps = {};
+    q.docs.forEach((d) => { const x = d.data(); if (x && x.week) state.handicaps[x.week] = x.values || {}; });
+    render();
+  });
   db.collection("subs").onSnapshot((q) => { state.subs = q.docs.map((d) => ({ id: d.id, ...d.data() })); render(); });
 }
 boot();

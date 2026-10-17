@@ -53,7 +53,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
   tr:last-child td { border-bottom: 0; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  th { white-space: nowrap; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
   .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
   td.num, th.num { text-align: right; }
   input, select { font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-bottom-color: var(--line); padding: 4px 6px; width: 100%; min-width: 0; border-radius: 4px; }
@@ -109,6 +109,7 @@
     </div>
     <nav role="tablist" id="tabs">
       <button role="tab" data-tab="scores" aria-selected="true">Scores</button>
+      <button role="tab" data-tab="standings" aria-selected="false">Standings</button>
       <button role="tab" data-tab="teams" aria-selected="false">Teams</button>
       <button role="tab" data-tab="subs" aria-selected="false">Subs</button>
       <button role="tab" data-tab="schedule" aria-selected="false">Schedule</button>
@@ -174,7 +175,7 @@ function render() {
   $("#leagueSub").textContent = `${state.teams.length} teams · ${state.settings.weeks} weeks · ${L.pointsPerWeek(state.settings)} points a week`;
   const v = $("#view");
   const active = state.focusId || (document.activeElement && document.activeElement.id);
-  const views = { scores: viewScores, teams: viewTeams, subs: viewSubs, schedule: viewSchedule, rules: viewRules };
+  const views = { scores: viewScores, standings: viewStandings, teams: viewTeams, subs: viewSubs, schedule: viewSchedule, rules: viewRules };
   if (!views[state.tab]) state.tab = "scores";
   v.innerHTML = views[state.tab]();
   document.querySelectorAll("#tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
@@ -270,6 +271,79 @@ function slotDetail(week, slot, ppl) {
   return { who, avg, hcp, hcpEntered: Number.isFinite(entered), games };
 }
 
+// One week's match between two teams. Only games where all four bowlers have a score count.
+function matchResult(week, A, B, ppl) {
+  const dA = lineupFor(week, A).map((x) => slotDetail(week, x, ppl));
+  const dB = lineupFor(week, B).map((x) => slotDetail(week, x, ppl));
+  const res = L.scoreMatch(dA.map((d) => ({ handicap: d.hcp, games: d.games })), dB.map((d) => ({ handicap: d.hcp, games: d.games })), state.settings);
+  let ta = 0, tb = 0, pinsA = 0, pinsB = 0, complete = 0;
+  const gameCells = res.games.map((g, k) => {
+    const done = dA.concat(dB).every((d) => Number.isFinite(d.games[k]));
+    if (done) { ta += g.pointsA; tb += g.pointsB; pinsA += g.totalA; pinsB += g.totalB; complete++; }
+    return { done, a: g.pointsA, b: g.pointsB, totA: g.totalA, totB: g.totalB };
+  });
+  return { dA, dB, gameCells, ta, tb, pinsA, pinsB, complete };
+}
+
+function standings() {
+  const ppl = people();
+  const teamById = Object.fromEntries(state.teams.map((t) => [t.id, t]));
+  const rows = Object.fromEntries(state.teams.map((t) => [t.id, { team: t, won: 0, lost: 0, pins: 0, weeks: {} }]));
+  const weeks = (state.schedule && state.schedule.weeks) || [];
+  let lastWeek = 0;
+  weeks.forEach((w, i) => (w.pairs || []).forEach((pair) => {
+    const A = teamById[pair.home], B = teamById[pair.away];
+    if (!A || !B) return;
+    const r = matchResult(i + 1, A, B, ppl);
+    if (!r.complete) return;
+    lastWeek = Math.max(lastWeek, i + 1);
+    for (const [t, won, lost, pins] of [[A, r.ta, r.tb, r.pinsA], [B, r.tb, r.ta, r.pinsB]]) {
+      const row = rows[t.id]; row.won += won; row.lost += lost; row.pins += pins; row.weeks[i + 1] = won;
+    }
+  }));
+  // Ranked by points won, then total handicap pins.
+  const teams = Object.values(rows).sort((a, b) => b.won - a.won || b.pins - a.pins);
+
+  const bowlers = {};
+  Object.values(state.scores).forEach((d) => (d.lineup || []).forEach((p) => {
+    if (p.absent) return;
+    const games = (p.games || []).filter(Number.isFinite);
+    if (!games.length) return;
+    const b = bowlers[p.personId] || (bowlers[p.personId] = { person: ppl[p.personId] || { name: "Removed bowler" }, games: [], highSeries: 0 });
+    b.games.push(...games);
+    if (games.length === state.settings.gamesPerWeek) b.highSeries = Math.max(b.highSeries, games.reduce((x, y) => x + y, 0));
+  }));
+  const bowlerRows = Object.values(bowlers).map((b) => ({ ...b, avg: Math.floor(b.games.reduce((x, y) => x + y, 0) / b.games.length), high: Math.max(...b.games) }))
+    .sort((a, b) => b.avg - a.avg);
+  return { teams, bowlerRows, weeks: weeks.length, lastWeek };
+}
+
+const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+function viewStandings() {
+  const { teams, bowlerRows, weeks, lastWeek } = standings();
+  const teamName2 = (t) => esc(t.name);
+  const weekCols = Array.from({ length: weeks }, (_, i) => i + 1);
+  const teamRows = teams.map((r, i) => `<tr>
+    <td class="num">${lastWeek ? i + 1 : "–"}</td><td>${teamName2(r.team)}</td>
+    <td class="num"><strong>${fmt(r.won)}</strong></td><td class="num">${fmt(r.lost)}</td><td class="num">${r.pins.toLocaleString()}</td>
+    ${weekCols.map((w) => `<td class="num sub">${w in r.weeks ? fmt(r.weeks[w]) : ""}</td>`).join("")}
+  </tr>`).join("");
+  const teamOf = (p) => { const t = state.teams.find((x) => x.id === p.teamId); return p.sub ? "Sub" : t ? esc(t.name) : ""; };
+  const bRows = bowlerRows.map((b) => `<tr><td>${esc(b.person.name)}</td><td class="sub">${teamOf(b.person)}</td>
+    <td class="num">${b.games.length}</td><td class="num"><strong>${b.avg}</strong></td><td class="num">${b.high}</td><td class="num">${b.highSeries || "–"}</td></tr>`).join("");
+  return `<section>
+    <div class="bar"><h2>Team standings</h2><span class="chip">${lastWeek ? "Through week " + lastWeek : "No scores yet"}</span></div>
+    <p class="callout">Ranked by points won, with total handicap pins as the tiebreaker. Each week is worth ${L.pointsPerWeek(state.settings)} points per match; a game counts once all four bowlers have a score.</p>
+    <div class="sheet"><table>
+      <thead><tr><th class="num">#</th><th>Team</th><th class="num">Won</th><th class="num">Lost</th><th class="num">Hdcp pins</th>${weekCols.map((w) => `<th class="num">Wk ${w}</th>`).join("")}</tr></thead>
+      <tbody>${teamRows}</tbody></table></div>
+    <div class="bar"><h2>Bowlers</h2></div>
+    <p class="callout">Scratch figures from league games, subs included. Blind scores don't count.</p>
+    <div class="sheet">${bRows ? `<table><thead><tr><th>Bowler</th><th>Team</th><th class="num">Games</th><th class="num">Avg</th><th class="num">High game</th><th class="num">High series</th></tr></thead><tbody>${bRows}</tbody></table>` : `<div class="empty">Bowler averages appear once scores are entered.</div>`}</div>
+  </section>`;
+}
+
 function viewScores() {
   const s = state.settings;
   const sch = state.schedule;
@@ -306,16 +380,8 @@ function viewScores() {
   const cards = (w.pairs || []).map((pair, j) => {
     const A = teamById[pair.home], B = teamById[pair.away];
     if (!A || !B) return A || B ? `<div class="match"><header><h3>${esc(teamName((A || B).id))}</h3><span class="chip">Bye</span></header></div>` : "";
-    const dA = lineupFor(week, A).map((x) => slotDetail(week, x, ppl));
-    const dB = lineupFor(week, B).map((x) => slotDetail(week, x, ppl));
+    const { dA, dB, gameCells, ta, tb, complete } = matchResult(week, A, B, ppl);
     if (dA.concat(dB).some((d) => !d.hcpEntered)) missingHcp = true;
-    const res = L.scoreMatch(dA.map((d) => ({ handicap: d.hcp, games: d.games })), dB.map((d) => ({ handicap: d.hcp, games: d.games })), s);
-    let ta = 0, tb = 0, complete = 0;
-    const gameCells = res.games.map((g, k) => {
-      const done = dA.concat(dB).every((d) => Number.isFinite(d.games[k]));
-      if (done) { ta += g.pointsA; tb += g.pointsB; complete++; }
-      return { done, a: g.pointsA, b: g.pointsB, totA: g.totalA, totB: g.totalB };
-    });
     const cell = (c, side) => `<span class="pts ${c.done && c[side] > c[side === "a" ? "b" : "a"] ? "win" : ""}">${c.done ? c[side] : "–"}</span>`;
     return `<div class="match">
       <header><h3>${esc(A.name)} <span class="sub">vs</span> ${esc(B.name)}</h3><span class="lanes">Lanes ${2 * j + 1}–${2 * j + 2}</span></header>
